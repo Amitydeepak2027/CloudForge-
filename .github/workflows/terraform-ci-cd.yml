@@ -70,9 +70,9 @@ jobs:
         run: |
           docker run -d \
             --name localemu \
-            --restart unless-stopped \
             -p 4566:4566 \
             -v /var/run/docker.sock:/var/run/docker.sock \
+            --group-add docker \
             localemu/localemu:latest
 
       - name: Wait for LocalEmu
