@@ -1,3 +1,4 @@
+
 name: CloudForge CI/CD
 
 on:
@@ -12,7 +13,9 @@ permissions:
 
 jobs:
   terraform-check:
+    name: Terraform Format and Validate
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -30,23 +33,14 @@ jobs:
         run: terraform validate
 
   python-tests:
+    name: Provision Infrastructure and Test API
     runs-on: ubuntu-latest
-
-    services:
-      localemu:
-        image: localemu/localemu:latest
-        ports:
-          - 4566:4566
-        options: >-
-          --health-cmd "curl -f http://localhost:4566/_localemu/health || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
 
     env:
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
+      AWS_REGION: us-east-1
       TF_VAR_aws_region: us-east-1
       TF_VAR_project_name: cloudforge
 
@@ -62,16 +56,53 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: python -m pip install boto3 pytest
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3 pytest
+
+      - name: Verify Docker
+        run: |
+          docker version
+          docker info
+
+      - name: Start LocalEmu with Docker access
+        run: |
+          docker run -d \
+            --name localemu \
+            --restart unless-stopped \
+            -p 4566:4566 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            localemu/localemu:latest
+
+      - name: Wait for LocalEmu
+        run: |
+          ready=0
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4566/_localemu/health; then
+              ready=1
+              break
+            fi
+
+            sleep 2
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            echo "LocalEmu failed to become healthy."
+            docker logs localemu
+            exit 1
+          fi
 
       - name: Initialize Terraform
-        run: terraform init -backend=false
+        run: terraform init
 
       - name: Provision test infrastructure
         run: terraform apply -auto-approve
-        env:
-          TF_LOG: ERROR
 
-      - name: Run API tests
-        run: python -m pytest -v
+      - name: Run Python API tests
+        run: pytest -v tests/
+
+      - name: Show LocalEmu logs on failure
+        if: failure()
+        run: docker logs localemu
