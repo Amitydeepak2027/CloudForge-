@@ -65,14 +65,19 @@ jobs:
         run: |
           docker version
           docker info
+          test -S /var/run/docker.sock
+          stat -c 'Docker socket GID: %g' /var/run/docker.sock
 
-      - name: Start LocalEmu with Docker access
+      - name: Start LocalEmu with Docker socket access
         run: |
+          SOCKET_GID="$(stat -c '%g' /var/run/docker.sock)"
+
           docker run -d \
             --name localemu \
+            --restart unless-stopped \
             -p 4566:4566 \
             -v /var/run/docker.sock:/var/run/docker.sock \
-            --group-add docker \
+            --group-add "$SOCKET_GID" \
             localemu/localemu:latest
 
       - name: Wait for LocalEmu
@@ -89,10 +94,24 @@ jobs:
           done
 
           if [ "$ready" -ne 1 ]; then
-            echo "LocalEmu failed to become healthy."
+            echo "LocalEmu did not become healthy."
             docker logs localemu
             exit 1
           fi
+
+      - name: Verify Docker socket access from LocalEmu
+        run: |
+          docker exec localemu sh -c '
+            test -S /var/run/docker.sock &&
+            test -r /var/run/docker.sock &&
+            test -w /var/run/docker.sock
+          ' || {
+            echo "LocalEmu cannot access the Docker socket."
+            docker exec localemu id || true
+            docker exec localemu ls -ln /var/run/docker.sock || true
+            docker logs localemu
+            exit 1
+          }
 
       - name: Initialize Terraform
         run: terraform init
@@ -101,8 +120,10 @@ jobs:
         run: terraform apply -auto-approve
 
       - name: Run Python API tests
-        run: pytest -v tests/
+        run: python -m pytest -v tests/
 
       - name: Show LocalEmu logs on failure
         if: failure()
-        run: docker logs localemu
+        run: |
+          docker ps -a
+          docker logs localemu || true
