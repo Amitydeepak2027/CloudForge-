@@ -1,4 +1,3 @@
-
 name: CloudForge CI/CD
 
 on:
@@ -13,7 +12,6 @@ permissions:
 jobs:
   terraform-check:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -44,9 +42,19 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+    env:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      TF_VAR_aws_region: us-east-1
+      TF_VAR_project_name: cloudforge
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -56,5 +64,13 @@ jobs:
       - name: Install dependencies
         run: python -m pip install boto3 pytest
 
-      - name: Run tests
+      - name: Initialize Terraform
+        run: terraform init -backend=false
+
+      - name: Provision test infrastructure
+        run: terraform apply -auto-approve
+        env:
+          TF_LOG: ERROR
+
+      - name: Run API tests
         run: python -m pytest -v
