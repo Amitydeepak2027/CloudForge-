@@ -1,0 +1,22 @@
+
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+terraform.tfvars
+*.auto.tfvars
+localstack_providers_override.tf
+lambda_package.zip
+.env
+.env.*
+__pycache__/
+*.pyc
+.venv/
+health.json
+# Pytest and test coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE files
+.vscode/
